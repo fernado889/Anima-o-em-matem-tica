@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Casa Interativa com Cenário Animado</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      user-select: none;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+      margin: auto;
+      background: linear-gradient(#87ceeb, #ffffff);
+      border: 2px solid #333;
+    }
+    #controles {
+      width: 600px;
+      margin: 10px auto;
+      display: flex;
+      justify-content: space-around;
+      flex-wrap: wrap;
+    }
+    .controle-grupo {
+      background: #f0f0f0;
+      padding: 8px;
+      border-radius: 6px;
+      box-shadow: 0 0 4px rgba(0,0,0,0.1);
+      width: 180px;
+      text-align: center;
+      margin-bottom: 10px;
+    }
+    button {
+      margin: 4px;
+      padding: 6px 10px;
+      font-size: 14px;
+      cursor: pointer;
+      border-radius: 4px;
+      border: 1px solid #888;
+      background-color: #ddd;
+      transition: background-color 0.3s;
+    }
+    button:hover {
+      background-color: #bbb;
+    }
+    #tooltip {
+      position: absolute;
+      background: rgba(255,255,224,0.95);
+      border: 1px solid #aaa;
+      padding: 8px 12px;
+      border-radius: 6px;
+      box-shadow: 2px 2px 6px rgba(0,0,0,0.2);
+      font-size: 14px;
+      max-width: 220px;
+      pointer-events: none;
+      display: none;
+      z-index: 1000;
+    }
+    #musica-controle {
+      text-align: center;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+<canvas id="canvas" width="600" height="450"></canvas>
+
+<div id="controles">
+  <div class="controle-grupo">
+    <h4>Sol (Círculo)</h4>
+    <button id="sol-aumentar">Aumentar</button>
+    <button id="sol-diminuir">Diminuir</button>
+  </div>
+  <div class="controle-grupo">
+    <h4>Telhado (Triângulo)</h4>
+    <button id="telhado-aumentar">Aumentar</button>
+    <button id="telhado-diminuir">Diminuir</button>
+  </div>
+  <div class="controle-grupo">
+    <h4>Janelas</h4>
+    <button id="janelas-aumentar">Aumentar</button>
+    <button id="janelas-diminuir">Diminuir</button>
+  </div>
+  <div class="controle-grupo">
+    <h4>Modo Dia/Noite</h4>
+    <button id="botao-modo">Ativar Noite</button>
+  </div>
+  <div class="controle-grupo" id="musica-controle">
+    <h4>Música Remix</h4>
+    <button id="play-pause">Play</button>
+  </div>
+</div>
+
+<div id="tooltip"></div>
+
+<script>
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const tooltip = document.getElementById('tooltip');
+  const botaoModo = document.getElementById('botao-modo');
+  const playPauseBtn = document.getElementById('play-pause');
+
+  let portaAberta = false;
+  let luzAcesa = false;
+  let angle = 0;
+  let modoNoite = false;
+
+  // Base posições e tamanhos
+  const baseX = 150;
+  const baseY = 180;
+  const raioMovimento = 10;
+
+  const casaLarguraBase = 300;
+  const casaAlturaBase = 160;
+  const solRaioBase = 35;
+  const telhadoAlturaBase = 90;
+  const janelaTamanhoBase = 40;
+
+  // Escalas para tamanho (1 = base)
+  let escalaSol = 1;
+  let escalaTelhado = 1;
+  let escalaJanelas = 1;
+
+  // Casas variáveis
+  let casaX = baseX;
+  let casaY = baseY;
+
+  // Nuvens animadas
+  const nuvens = [
+    {x: 120, y: 80, speed: 0.3},
+    {x: 350, y: 60, speed: 0.2},
+    {x: 50, y: 110, speed: 0.15}
+  ];
+
+  // Pássaros animados
+  const passaros = [
+    {x: 0, y: 50, speed: 1.2},
+    {x: -100, y: 70, speed: 1.0},
+    {x: -200, y: 40, speed: 1.4}
+  ];
+
+  // Árvores (posição e ângulo para vento)
+  const arvores = [
+    {x: 100, y: 260, angle: 0, direction: 1},
+    {x: 480, y: 260, angle: 0, direction: -1}
+  ];
+
+  // Música remix simples com loop usando áudio embutido (exemplo com áudio público)
+  const audio = new Audio('https://cdn.pixabay.com/download/audio/2023/02/17/audio_1a2879b9bc.mp3?filename=house-remix-11284.mp3');
+  audio.loop = true;
+
+  function desenharNuvem(x, y) {
+    ctx.fillStyle = modoNoite ? "#bbb" : "#ffffff";
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.arc(x + i * 20, y, 20, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function desenharArvore(x, y, angle) {
+    ctx.save();
+    ctx.translate(x + 10, y + 40); // pivô no topo do tronco
+    ctx.rotate(angle);
+
+    // Tronco
+    ctx.fillStyle = "#8B4513";
+    ctx.fillRect(-10, 0, 20, 40);
+
+    // Copa
+    ctx.beginPath();
+    ctx.arc(0, 0, 25, 0, Math.PI * 2);
+    ctx.fillStyle = "#228B22";
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function desenharCerca(yBase) {
+    ctx.fillStyle = modoNoite ? "#aa8" : "#DEB887";
+    for (let i = 0; i < 10; i++) {
+      ctx.fillRect(50 + i * 50, yBase, 10, 30);
+    }
+    ctx.fillRect(50, yBase + 10, 450, 5); // linha horizontal
+  }
+
+  function desenharLegenda() {
+    const legendaX = 460;
+    const legendaY = 10;
+    const largura = 130;
+    const altura = 210;
+
+    ctx.fillStyle = modoNoite ? 'rgba(30, 30, 30, 0.85)' : 'rgba(255, 255, 255, 0.85)';
+    ctx.fillRect(legendaX, legendaY, largura, altura);
+
+    ctx.strokeStyle = modoNoite ? '#eee' : '#333';
+    ctx.strokeRect(legendaX, legendaY, largura, altura);
+
+    ctx.fillStyle = modoNoite ? '#eee' : '#000';
+    ctx.font = 'bold 14px Arial';
+    ctx.fillText('Legenda Geométrica', legendaX + 10, legendaY + 25);
+
+    ctx.font = '12px Arial';
+    ctx.fillText('• Círculo (Sol):', legendaX + 10, legendaY + 50);
+    ctx.fillText('  Área = πr²', legendaX + 20, legendaY + 70);
+
+    ctx.fillText('• Triângulo (Telhado):', legendaX + 10, legendaY + 95);
+    ctx.fillText('  Área = (b×h)/2', legendaX + 20, legendaY + 115);
+
+    ctx.fillText('• Quadrado (Janela Esq.):', legendaX + 10, legendaY + 140);
+    ctx.fillText('  Área = L²', legendaX + 20, legendaY + 160);
+
+    ctx.fillText('• Retângulo (Janela Dir.):', legendaX + 10, legendaY + 185);
+    ctx.fillText('  Área = b×h', legendaX + 20, legendaY + 205);
+  }
+
+  function desenharPassaro(x, y) {
+    ctx.strokeStyle = modoNoite ? 'lightgray' : 'black';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + 10, y - 5);
+    ctx.lineTo(x + 20, y);
+    ctx.stroke();
+  }
+
+  function desenharCena() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Céu
+    if(modoNoite){
+      // gradiente noite
+      let gradiente = ctx.createLinearGradient(0, 0, 0, 300);
+      gradiente.addColorStop(0, '#001028');
+      gradiente.addColorStop(1, '#000');
+      ctx.fillStyle = gradiente;
+      ctx.fillRect(0, 0, canvas.width, 300);
+
+      // Estrelas simples
+      for(let i=0; i<50; i++){
+        ctx.fillStyle = 'white';
+        ctx.beginPath();
+        ctx.arc(Math.random()*canvas.width, Math.random()*300, 1.5, 0, Math.PI*2);
+        ctx.fill();
+      }
+    } else {
+      ctx.fillStyle = '#87CEFA';
+      ctx.fillRect(0, 0, canvas.width, 300);
+    }
+
+    // Grama
+    ctx.fillStyle = modoNoite ? '#023301' : '#228B22';
+    ctx.fillRect(0, 300, canvas.width, 150);
+
+    // Sol ou Lua (círculo)
+    const solX = 70;
+    const solY = 70;
+    const solRaio = solRaioBase * escalaSol;
+    ctx.beginPath();
+    ctx.arc(solX, solY, solRaio, 0, Math.PI * 2);
+    if(modoNoite){
+      ctx.fillStyle = '#F0E68C'; // cor da lua
+      ctx.shadowColor = 'rgba(255, 255, 224, 0.5)';
+      ctx.shadowBlur = 15;
+      ctx.fill();
+
+      // Círculo menor para criar a lua crescente
+      ctx.beginPath();
+      ctx.arc(solX + solRaio/3, solY - solRaio/3, solRaio*0.8, 0, Math.PI * 2);
+      ctx.fillStyle = modoNoite ? '#001028' : '#87CEFA';
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    } else {
+      ctx.fillStyle = '#FFD700';
+      ctx.fill();
+    }
+
+    // Fórmula do círculo no sol/lua
+    ctx.fillStyle = modoNoite ? '#F0E68C' : '#B8860B';
+    ctx.font = 'bold 16px monospace';
+    ctx.fillText(`Área círculo: πr²`, solX - solRaio, solY + solRaio + 20);
+
+    // Nuvens animadas
+    for (let nuvem of nuvens) {
+      desenharNuvem(nuvem.x, nuvem.y);
+    }
+
+    // Pássaros animados
+    for (let passaro of passaros) {
+      desenharPassaro(passaro.x, passaro.y);
+    }
+
+    // Grama base
+    ctx.fillStyle = modoNoite ? '#013300' : '#006400';
+    ctx.fillRect(0, 300, canvas.width, 150);
+
+    // Casa base (retângulo)
+    const casaLargura = casaLarguraBase;
+    const casaAltura = casaAlturaBase;
+    const casaXpos = casaX;
+    const casaYpos = casaY;
+    ctx.fillStyle = modoNoite ? '#654321' : '#DEB887';
+    ctx.fillRect(casaXpos, casaYpos, casaLargura, casaAltura);
+
+    // Porta
+    const portaLargura = 60;
+    const portaAltura = 90;
+    const portaX = casaXpos + casaLargura / 2 - portaLargura / 2;
+    const portaY = casaYpos + casaAltura - portaAltura;
+
+    ctx.fillStyle = '#654321';
+    ctx.fillRect(portaX, portaY, portaLargura, portaAltura);
+
+    // Porta aberta/fechada (simples animação)
+    if (portaAberta) {
+      ctx.save();
+      ctx.fillStyle = '#523E2B';
+      ctx.translate(portaX, portaY + portaAltura);
+      ctx.rotate(-Math.PI / 4);
+      ctx.fillRect(0, -portaAltura, portaLargura / 4, portaAltura);
+      ctx.restore();
+    }
+
+    // Janela esquerda (quadrado)
+    const janelaEsqTam = janelaTamanhoBase * escalaJanelas;
+    const janelaEsqX = casaXpos + 30;
+    const janelaEsqY = casaYpos + 50;
+    ctx.fillStyle = luzAcesa ? '#FFFA87' : (modoNoite ? '#555' : '#ADD8E6');
+    ctx.fillRect(janelaEsqX, janelaEsqY, janelaEsqTam, janelaEsqTam);
+
+    // Janela direita (retângulo)
+    const janelaDirLarg = janelaTamanhoBase * 1.5 * escalaJanelas;
+    const janelaDirAlt = janelaTamanhoBase * escalaJanelas;
+    const janelaDirX = casaXpos + casaLargura - 30 - janelaDirLarg;
+    const janelaDirY = casaYpos + 50;
+    ctx.fillStyle = luzAcesa ? '#FFFA87' : (modoNoite ? '#555' : '#ADD8E6');
+    ctx.fillRect(janelaDirX, janelaDirY, janelaDirLarg, janelaDirAlt);
+
+    // Fórmulas das janelas
+    ctx.fillStyle = modoNoite ? '#eee' : '#333';
+    ctx.font = 'bold 16px monospace';
+    ctx.fillText(`Área quadrado: L²`, janelaEsqX, janelaEsqY - 10);
+    ctx.fillText(`Área retângulo: b×h`, janelaDirX, janelaDirY - 10);
+
+    // Telhado (triângulo isósceles)
+    const telhadoBase = casaLargura * escalaTelhado;
+    const telhadoAltura = telhadoAlturaBase * escalaTelhado;
+    const telhadoX = casaXpos;
+    const telhadoY = casaYpos;
+    ctx.beginPath();
+    ctx.moveTo(telhadoX, telhadoY);
+    ctx.lineTo(telhadoX + telhadoBase / 2, telhadoY - telhadoAltura);
+    ctx.lineTo(telhadoX + telhadoBase, telhadoY);
+    ctx.closePath();
+
+    ctx.fillStyle = modoNoite ? '#550000' : '#8B0000';
+    ctx.fill();
+
+    // Fórmula triângulo no telhado
+    ctx.fillStyle = modoNoite ? '#eee' : '#000';
+    ctx.font = 'bold 16px monospace';
+    ctx.fillText(`Área triângulo: (b×h)/2`, telhadoX + telhadoBase / 3, telhadoY - telhadoAltura - 10);
+
+    // Cerca
+    desenharCerca(350);
+
+    // Árvores com vento
+    for (let arvore of arvores) {
+      arvore.angle += 0.005 * arvore.direction;
+      if (arvore.angle > 0.1 || arvore.angle < -0.1) {
+        arvore.direction *= -1;
+      }
+      desenharArvore(arvore.x, arvore.y, arvore.angle);
+    }
+
+    // Legenda geométrica
+    desenharLegenda();
+
+    // Luzes da casa (janelas)
+    if (modoNoite && luzAcesa) {
+      ctx.fillStyle = 'rgba(255, 255, 150, 0.5)';
+      ctx.fillRect(janelaEsqX, janelaEsqY, janelaEsqTam, janelaEsqTam);
+      ctx.fillRect(janelaDirX, janelaDirY, janelaDirLarg, janelaDirAlt);
+    }
+  }
+
+  function atualizarAnimacoes() {
+    // Atualiza posição nuvens
+    for (let nuvem of nuvens) {
+      nuvem.x += nuvem.speed;
+      if (nuvem.x > canvas.width + 60) nuvem.x = -60;
+    }
+    // Atualiza posição pássaros
+    for (let passaro of passaros) {
+      passaro.x += passaro.speed;
+      if (passaro.x > canvas.width + 30) passaro.x = -50;
+    }
+  }
+
+  function loop() {
+    atualizarAnimacoes();
+    desenharCena();
+    requestAnimationFrame(loop);
+  }
+
+  // Eventos do mouse para tooltip
+
+  canvas.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    // Checar se está sobre alguma figura geométrica
+    // Sol/lua (círculo)
+    const solX = 70;
+    const solY = 70;
+    const solRaio = solRaioBase * escalaSol;
+    if (Math.hypot(mx - solX, my - solY) < solRaio) {
+      mostrarTooltip(e.clientX, e.clientY, 'Sol/Lua: Área do círculo = π × raio²');
+      return;
+    }
+
+    // Telhado (triângulo)
+    const telhadoBase = casaLarguraBase * escalaTelhado;
+    const telhadoAltura = telhadoAlturaBase * escalaTelhado;
+    const telhadoX = baseX;
+    const telhadoY = baseY;
+    if (pontoNoTriangulo(mx, my, telhadoX, telhadoY, telhadoBase, telhadoAltura)) {
+      mostrarTooltip(e.clientX, e.clientY, 'Telhado: Área do triângulo = (base × altura) / 2');
+      return;
+    }
+
+    // Janela esquerda (quadrado)
+    const janelaEsqTam = janelaTamanhoBase * escalaJanelas;
+    const janelaEsqX = baseX + 30;
+    const janelaEsqY = baseY + 50;
+    if (mx >= janelaEsqX && mx <= janelaEsqX + janelaEsqTam &&
+        my >= janelaEsqY && my <= janelaEsqY + janelaEsqTam) {
+      mostrarTooltip(e.clientX, e.clientY, 'Janela Esquerda: Área do quadrado = lado × lado');
+      return;
+    }
+
+    // Janela direita (retângulo)
+    const janelaDirLarg = janelaTamanhoBase * 1.5 * escalaJanelas;
+    const janelaDirAlt = janelaTamanhoBase * escalaJanelas;
+    const janelaDirX = baseX + casaLarguraBase - 30 - janelaDirLarg;
+    const janelaDirY = baseY + 50;
+    if (mx >= janelaDirX && mx <= janelaDirX + janelaDirLarg &&
+        my >= janelaDirY && my <= janelaDirY + janelaDirAlt) {
+      mostrarTooltip(e.clientX, e.clientY, 'Janela Direita: Área do retângulo = base × altura');
+      return;
+    }
+
+    esconderTooltip();
+  });
+
+  canvas.addEventListener('click', e => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    // Porta clicável
+    const portaLargura = 60;
+    const portaAltura = 90;
+    const portaX = baseX + casaLarguraBase / 2 - portaLargura / 2;
+    const portaY = baseY + casaAlturaBase - portaAltura;
+
+    if (mx >= portaX && mx <= portaX + portaLargura &&
+        my >= portaY && my <= portaY + portaAltura) {
+      portaAberta = !portaAberta;
+      return;
+    }
+
+    // Luz das janelas (clicar dentro da casa)
+    if (mx >= baseX && mx <= baseX + casaLarguraBase &&
+        my >= baseY && my <= baseY + casaAlturaBase) {
+      luzAcesa = !luzAcesa;
+      return;
+    }
+  });
+
+  function mostrarTooltip(x, y, texto) {
+    tooltip.style.left = x + 10 + 'px';
+    tooltip.style.top = y + 10 + 'px';
+    tooltip.style.display = 'block';
+    tooltip.textContent = texto;
+  }
+
+  function esconderTooltip() {
+    tooltip.style.display = 'none';
+  }
+
+  // Checar se ponto está dentro do triângulo do telhado (isósceles)
+  function pontoNoTriangulo(px, py, baseX, baseY, base, altura) {
+    // Triângulo com base na linha y=baseY, com vértice superior na (baseX + base/2, baseY - altura)
+    if (py > baseY || py < baseY - altura) return false;
+    // Usar a fórmula da área para ver se o ponto está dentro
+    // Área total triângulo
+    const A = (base * altura) / 2;
+    // Áreas subtriângulos
+    // Vértices
+    const Ax = baseX, Ay = baseY;
+    const Bx = baseX + base, By = baseY;
+    const Cx = baseX + base / 2, Cy = baseY - altura;
+
+    const area1 = areaTriangulo(px, py, Bx, By, Cx, Cy);
+    const area2 = areaTriangulo(Ax, Ay, px, py, Cx, Cy);
+    const area3 = areaTriangulo(Ax, Ay, Bx, By, px, py);
+
+    return Math.abs(area1 + area2 + area3 - A) < 0.1;
+  }
+  function areaTriangulo(x1, y1, x2, y2, x3, y3) {
+    return Math.abs((x1*(y2 - y3) + x2*(y3 - y1) + x3*(y1 - y2))/2);
+  }
+
+  // Controles do tamanho
+
+  document.getElementById('sol-aumentar').onclick = () => {
+    escalaSol += 0.1;
+    if (escalaSol > 2) escalaSol = 2;
+  };
+  document.getElementById('sol-diminuir').onclick = () => {
+    escalaSol -= 0.1;
+    if (escalaSol < 0.5) escalaSol = 0.5;
+  };
+
+  document.getElementById('telhado-aumentar').onclick = () => {
+    escalaTelhado += 0.1;
+    if (escalaTelhado > 2) escalaTelhado = 2;
+  };
+  document.getElementById('telhado-diminuir').onclick = () => {
+    escalaTelhado -= 0.1;
+    if (escalaTelhado < 0.5) escalaTelhado = 0.5;
+  };
+
+  document.getElementById('janelas-aumentar').onclick = () => {
+    escalaJanelas += 0.1;
+    if (escalaJanelas > 2) escalaJanelas = 2;
+  };
+  document.getElementById('janelas-diminuir').onclick = () => {
+    escalaJanelas -= 0.1;
+    if (escalaJanelas < 0.5) escalaJanelas = 0.5;
+  };
+
+  // Botão modo dia/noite
+  botaoModo.onclick = () => {
+    modoNoite = !modoNoite;
+    botaoModo.textContent = modoNoite ? 'Ativar Dia' : 'Ativar Noite';
+  };
+
+  // Controle play/pause música
+  playPauseBtn.onclick = () => {
+    if (audio.paused) {
+      audio.play();
+      playPauseBtn.textContent = 'Pause';
+    } else {
+      audio.pause();
+      playPauseBtn.textContent = 'Play';
+    }
+  };
+
+  loop();
+
+</script>
+</body>
+</html>
+
+
